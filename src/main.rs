@@ -12,6 +12,7 @@ use store::Store;
 use tracing_subscriber::fmt::format::FmtSpan;
 mod routes;
 mod types;
+mod utils;
 use types::user::User;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]

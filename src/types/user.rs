@@ -9,3 +9,13 @@ pub struct User {
     email: String,
     password: String,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UserResponse {
+    pub token: String,
+}
+impl UserResponse {
+    pub fn new(token: String) -> Self {
+        Self { token }
+    }
+}

@@ -1,5 +1,5 @@
 [package]
-name = "warp"
+name = "warp_webdev"
 version = "0.1.0"
 edition = "2024"
 
@@ -13,3 +13,4 @@ dotenv = "0.15.0"
 config = "0.15.11"
 tracing = {version="0.1", features=["log"]}
 tracing-subscriber = {version="0.3.19", features=["env-filter"]}
+jsonwebtoken = "9.3.1"
