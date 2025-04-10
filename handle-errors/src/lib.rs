@@ -1,8 +1,9 @@
 use std::os::unix::raw::mode_t;
 
 use argon2::Error as ArgonError;
-use jsonwebtoken::errors::Error as JwtError;
+use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use mongodb::error::{Error as DBError, ErrorKind as DBErrorKind};
+use tracing::{Level, event};
 use warp::{
     Rejection, Reply, cors::CorsForbidden, filters::body::BodyDeserializeError, http::StatusCode,
     reject::Reject,
@@ -47,11 +48,55 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
             DBErrorKind::Authentication { message, .. } => {
                 Ok(warp::reply::with_status(message, StatusCode::UNAUTHORIZED))
             }
+            DBErrorKind::ServerSelection { message, .. } => Ok(warp::reply::with_status(
+                message,
+                StatusCode::SERVICE_UNAVAILABLE,
+            )),
             _ => Ok(warp::reply::with_status(
                 "Internal Server Error".to_string(),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )),
         }
+    } else if let Some(crate::Error::JwtError(e)) = r.find() {
+        match e.kind() {
+            JwtErrorKind::InvalidToken => Ok(warp::reply::with_status(
+                "Internal Server Error".to_string(),
+                StatusCode::NOT_ACCEPTABLE,
+            )),
+            _ => Ok(warp::reply::with_status(
+                "Internal Server Error".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )),
+        }
+    } else if let Some(crate::Error::ArgonLibraryError(e)) = r.find() {
+        event!(Level::ERROR, "{}", e);
+        match e {
+            ArgonError::PwdTooLong => Ok(warp::reply::with_status(
+                "Password too long".to_string(),
+                StatusCode::NOT_ACCEPTABLE,
+            )),
+            _ => Ok(warp::reply::with_status(
+                "Internal Server Error".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )),
+        }
+    } else if let Some(error) = r.find::<CorsForbidden>() {
+        Ok(warp::reply::with_status(
+            error.to_string(),
+            StatusCode::FORBIDDEN,
+        ))
+    } else if let Some(error) = r.find::<BodyDeserializeError>() {
+        event!(Level::ERROR, "{}", error);
+        Ok(warp::reply::with_status(
+            error.to_string(),
+            StatusCode::UNPROCESSABLE_ENTITY,
+        ))
+    } else if let Some(crate::Error::WrongPassword) = r.find() {
+        event!(Level::ERROR, "Entered wrong password");
+        Ok(warp::reply::with_status(
+            "Wrong E-Mail/Password combination".to_string(),
+            StatusCode::UNAUTHORIZED,
+        ))
     } else {
         Ok(warp::reply::with_status(
             "Route not found".to_string(),
