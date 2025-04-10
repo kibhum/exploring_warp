@@ -1,0 +1,11 @@
+[package]
+name = "handle-errors"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+warp="0.3"
+mongodb="3.2.3"
+tracing = {version="0.1", features=["log"]}
+jsonwebtoken = "9.3.1"
+rust-argon2 = "1.0"
