@@ -13,6 +13,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 mod routes;
 mod types;
 mod utils;
+use handle_errors::return_error;
 use types::user::User;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -80,15 +81,18 @@ async fn main() -> Result<(), std::io::Error> {
     // Routes
     // 1. Users path
 
-    let add_user = warp::post()
+    let register = warp::post()
         .and(warp::path("users"))
         .and(warp::path::end())
         // .and(routes::authentication::auth())
         .and(store_filter.clone())
         .and(warp::body::json())
-        .and_then(routes::user::add_user);
+        .and_then(routes::user::register);
     // Combining all the routes
-    let routes = add_user.with(cors).with(warp::trace::request());
+    let routes = register
+        .with(cors)
+        .with(warp::trace::request())
+        .recover(return_error);
     warp::serve(routes).run(([127, 0, 0, 1], port)).await;
     Ok(())
 }

@@ -653,7 +653,7 @@ version = "0.1.0"
 dependencies = [
  "jsonwebtoken",
  "mongodb",
- "rust-argon2",
+ "rust-argon2 1.0.1",
  "tracing",
  "warp",
 ]
@@ -1758,6 +1758,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "rust-argon2"
+version = "2.1.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9d9848531d60c9cbbcf9d166c885316c24bc0e2a9d3eba0956bb6cbbd79bc6e8"
+dependencies = [
+ "base64 0.21.7",
+ "blake2b_simd",
+ "constant_time_eq",
+]
+
+[[package]]
 name = "rust-ini"
 version = "0.21.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -2611,6 +2622,8 @@ dependencies = [
  "handle-errors",
  "jsonwebtoken",
  "mongodb",
+ "rand 0.9.0",
+ "rust-argon2 2.1.0",
  "serde",
  "serde_json",
  "tokio",

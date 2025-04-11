@@ -1,18 +1,27 @@
 use crate::Store;
 use crate::types::user::{User, UserResponse};
-use crate::utils::authentication::Claims;
+use crate::utils::authentication::{Claims, hash_password};
 use jsonwebtoken::get_current_timestamp;
 use mongodb::bson::Bson;
 use mongodb::error::Error;
 use std::time::{Duration, SystemTime};
 use warp::{Rejection, reject::Reject};
 
-pub async fn add_user(store: Store, user: User) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn register(store: Store, user: User) -> Result<impl warp::Reply, warp::Rejection> {
     let db = store.db;
-    let new_user = db.collection("user").insert_one(user).await;
+    // Hash the user's password
+    let hashed_password = hash_password(user.password);
+
+    let updated_user = User {
+        email: user.email,
+        password: hashed_password,
+        username: user.username,
+        id: None,
+    };
+
+    let new_user = db.collection("user").insert_one(updated_user).await;
     match new_user {
         Ok(result) => {
-            // let user_id = result.inserted_id.as_str();
             let user_id = result.inserted_id.as_object_id().unwrap().to_string();
             let expires_in = SystemTime::now()
                 .duration_since(SystemTime::UNIX_EPOCH)
@@ -27,7 +36,7 @@ pub async fn add_user(store: Store, user: User) -> Result<impl warp::Reply, warp
         }
 
         Err(e) => {
-            eprintln!("e");
+            eprintln!("{}", e);
             Err(warp::reject())
         }
     }
