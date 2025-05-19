@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct User {
-    pub id: Option<ObjectId>,
+    pub _id: Option<ObjectId>,
     pub username: String,
     pub email: String,
     pub password: String,

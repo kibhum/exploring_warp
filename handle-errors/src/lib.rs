@@ -15,6 +15,7 @@ pub enum Error {
     ArgonLibraryError(ArgonError),
     JwtError(JwtError),
     UserAlreadyExists,
+    MissingUserId,
 }
 
 impl StdError for Error {}
@@ -39,6 +40,9 @@ impl std::fmt::Display for Error {
             }
             Error::UserAlreadyExists => {
                 writeln!(f, "User Already Exists")
+            }
+            Error::MissingUserId => {
+                writeln!(f, "Missing User Id")
             }
         }
     }
@@ -106,7 +110,13 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
         event!(Level::ERROR, "User already exists");
         Ok(warp::reply::with_status(
             "User already exists".to_string(),
-            StatusCode::UNAUTHORIZED,
+            StatusCode::BAD_REQUEST,
+        ))
+    } else if let Some(crate::Error::MissingUserId) = r.find() {
+        event!(Level::ERROR, "Missing User Id");
+        Ok(warp::reply::with_status(
+            "Missing User Id".to_string(),
+            StatusCode::BAD_REQUEST,
         ))
     } else {
         Ok(warp::reply::with_status(

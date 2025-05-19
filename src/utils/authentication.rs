@@ -43,6 +43,6 @@ pub fn hash_password(password: String) -> String {
     argon2::hash_encoded(password.as_bytes(), &salt, &config).unwrap()
 }
 
-fn verify_password(hash: &str, password: String) -> Result<bool, argon2::Error> {
+pub fn verify_password(hash: &str, password: String) -> Result<bool, argon2::Error> {
     argon2::verify_encoded(hash, password.as_bytes())
 }
