@@ -314,12 +314,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "crossbeam-utils"
-version = "0.8.21"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d0a5c400df2834b80a4c3327b3aad3a4c4cd4de0629063962b03235697506a28"
-
-[[package]]
 name = "crunchy"
 version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -653,7 +647,7 @@ version = "0.1.0"
 dependencies = [
  "jsonwebtoken",
  "mongodb",
- "rust-argon2 1.0.1",
+ "rust-argon2",
  "tracing",
  "warp",
 ]
@@ -1747,18 +1741,6 @@ dependencies = [
 
 [[package]]
 name = "rust-argon2"
-version = "1.0.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "a5885493fdf0be6cdff808d1533ce878d21cfa49c7086fa00c66355cd9141bfc"
-dependencies = [
- "base64 0.21.7",
- "blake2b_simd",
- "constant_time_eq",
- "crossbeam-utils",
-]
-
-[[package]]
-name = "rust-argon2"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "9d9848531d60c9cbbcf9d166c885316c24bc0e2a9d3eba0956bb6cbbd79bc6e8"
@@ -2623,7 +2605,7 @@ dependencies = [
  "jsonwebtoken",
  "mongodb",
  "rand 0.9.0",
- "rust-argon2 2.1.0",
+ "rust-argon2",
  "serde",
  "serde_json",
  "tokio",

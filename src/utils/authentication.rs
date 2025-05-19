@@ -37,7 +37,6 @@ impl Claims {
 }
 
 pub fn hash_password(password: String) -> String {
-    let pass = password.as_bytes();
     let mut salt = [0u8; 8];
     rand::rng().fill_bytes(&mut salt);
     let config = Config::default();

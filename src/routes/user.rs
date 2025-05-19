@@ -1,14 +1,35 @@
 use crate::Store;
 use crate::types::user::{User, UserResponse};
 use crate::utils::authentication::{Claims, hash_password};
-use jsonwebtoken::get_current_timestamp;
-use mongodb::bson::Bson;
-use mongodb::error::Error;
+use handle_errors::Error as CustomError;
+use mongodb::bson::doc;
 use std::time::{Duration, SystemTime};
 use warp::{Rejection, reject::Reject};
 
 pub async fn register(store: Store, user: User) -> Result<impl warp::Reply, warp::Rejection> {
     let db = store.db;
+    // Checking whether the username or email is already in use
+    let db_user = db
+        .collection::<User>("user")
+        .find_one(doc! {
+            "$or": [
+                { "username": &user.username },
+                { "email": &user.email }
+            ]
+        })
+        .await;
+    match db_user {
+        Ok(user_option) => {
+            if user_option.is_some() {
+                return Err(warp::reject::custom(CustomError::UserAlreadyExists));
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            return Err(warp::reject::custom(CustomError::DbError(e)));
+        }
+    }
+
     // Hash the user's password
     let hashed_password = hash_password(user.password);
 
@@ -29,7 +50,7 @@ pub async fn register(store: Store, user: User) -> Result<impl warp::Reply, warp
                 .as_millis() as usize
                 + Duration::from_millis(24 * 60 * 60 * 1000).as_millis() as usize;
             let user_claims = Claims::new(user_id, expires_in);
-            let token = Claims::create_token(&user_claims).expect("Could not generate token");
+            let token = Claims::create_token(&user_claims).map_err(|e| CustomError::JwtError(e))?;
             let user_response = UserResponse::new(token);
 
             Ok(warp::reply::json(&user_response))
@@ -37,7 +58,7 @@ pub async fn register(store: Store, user: User) -> Result<impl warp::Reply, warp
 
         Err(e) => {
             eprintln!("{}", e);
-            Err(warp::reject())
+            Err(warp::reject::custom(CustomError::DbError(e)))
         }
     }
 }

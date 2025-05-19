@@ -1,8 +1,7 @@
-use std::os::unix::raw::mode_t;
-
 use argon2::Error as ArgonError;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use mongodb::error::{Error as DBError, ErrorKind as DBErrorKind};
+use std::{error::Error as StdError, f32::consts::E};
 use tracing::{Level, event};
 use warp::{
     Rejection, Reply, cors::CorsForbidden, filters::body::BodyDeserializeError, http::StatusCode,
@@ -15,7 +14,10 @@ pub enum Error {
     DbError(DBError),
     ArgonLibraryError(ArgonError),
     JwtError(JwtError),
+    UserAlreadyExists,
 }
+
+impl StdError for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -34,6 +36,9 @@ impl std::fmt::Display for Error {
             }
             Error::WrongPassword => {
                 writeln!(f, "Wrong password")
+            }
+            Error::UserAlreadyExists => {
+                writeln!(f, "User Already Exists")
             }
         }
     }
@@ -95,6 +100,12 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
         event!(Level::ERROR, "Entered wrong password");
         Ok(warp::reply::with_status(
             "Wrong E-Mail/Password combination".to_string(),
+            StatusCode::UNAUTHORIZED,
+        ))
+    } else if let Some(crate::Error::UserAlreadyExists) = r.find() {
+        event!(Level::ERROR, "User already exists");
+        Ok(warp::reply::with_status(
+            "User already exists".to_string(),
             StatusCode::UNAUTHORIZED,
         ))
     } else {
