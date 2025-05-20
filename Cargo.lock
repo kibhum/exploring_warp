@@ -648,6 +648,7 @@ dependencies = [
  "jsonwebtoken",
  "mongodb",
  "rust-argon2",
+ "serde",
  "tracing",
  "warp",
 ]

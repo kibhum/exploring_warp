@@ -1,12 +1,27 @@
 use argon2::Error as ArgonError;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use mongodb::error::{Error as DBError, ErrorKind as DBErrorKind};
+use serde::Serialize;
 use std::{error::Error as StdError, f32::consts::E};
 use tracing::{Level, event};
 use warp::{
     Rejection, Reply, cors::CorsForbidden, filters::body::BodyDeserializeError, http::StatusCode,
     reject::Reject,
 };
+
+#[derive(Serialize)]
+struct ErrorResponse {
+    pub message: String,
+    pub status_code: u16,
+}
+impl ErrorResponse {
+    pub fn new(message: String, status: StatusCode) -> Self {
+        ErrorResponse {
+            message,
+            status_code: status.as_u16(),
+        }
+    }
+}
 
 #[derive(Debug)]
 pub enum Error {
@@ -54,26 +69,39 @@ impl Reject for Error {}
 pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
     if let Some(crate::Error::DbError(e)) = r.find() {
         match *e.kind.clone() {
-            DBErrorKind::Authentication { message, .. } => {
-                Ok(warp::reply::with_status(message, StatusCode::UNAUTHORIZED))
-            }
+            DBErrorKind::Authentication { message, .. } => Ok(warp::reply::with_status(
+                warp::reply::json(&ErrorResponse::new(message, StatusCode::UNAUTHORIZED)),
+                StatusCode::UNAUTHORIZED,
+            )),
             DBErrorKind::ServerSelection { message, .. } => Ok(warp::reply::with_status(
-                message,
+                warp::reply::json(&ErrorResponse::new(
+                    message,
+                    StatusCode::SERVICE_UNAVAILABLE,
+                )),
                 StatusCode::SERVICE_UNAVAILABLE,
             )),
             _ => Ok(warp::reply::with_status(
-                "Internal Server Error".to_string(),
+                warp::reply::json(&ErrorResponse::new(
+                    "Internal Server Error".to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )),
         }
     } else if let Some(crate::Error::JwtError(e)) = r.find() {
         match e.kind() {
             JwtErrorKind::InvalidToken => Ok(warp::reply::with_status(
-                "Internal Server Error".to_string(),
+                warp::reply::json(&ErrorResponse::new(
+                    "Invalid Token".to_string(),
+                    StatusCode::NOT_ACCEPTABLE,
+                )),
                 StatusCode::NOT_ACCEPTABLE,
             )),
             _ => Ok(warp::reply::with_status(
-                "Internal Server Error".to_string(),
+                warp::reply::json(&ErrorResponse::new(
+                    "Internal Server Error".to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )),
         }
@@ -81,46 +109,70 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
         event!(Level::ERROR, "{}", e);
         match e {
             ArgonError::PwdTooLong => Ok(warp::reply::with_status(
-                "Password too long".to_string(),
+                warp::reply::json(&ErrorResponse::new(
+                    "Password Too Long".to_string(),
+                    StatusCode::NOT_ACCEPTABLE,
+                )),
                 StatusCode::NOT_ACCEPTABLE,
             )),
             _ => Ok(warp::reply::with_status(
-                "Internal Server Error".to_string(),
+                warp::reply::json(&ErrorResponse::new(
+                    "Internal Server Error".to_string(),
+                    StatusCode::INTERNAL_SERVER_ERROR,
+                )),
                 StatusCode::INTERNAL_SERVER_ERROR,
             )),
         }
     } else if let Some(error) = r.find::<CorsForbidden>() {
         Ok(warp::reply::with_status(
-            error.to_string(),
+            warp::reply::json(&ErrorResponse::new(
+                error.to_string(),
+                StatusCode::FORBIDDEN,
+            )),
             StatusCode::FORBIDDEN,
         ))
     } else if let Some(error) = r.find::<BodyDeserializeError>() {
         event!(Level::ERROR, "{}", error);
         Ok(warp::reply::with_status(
-            error.to_string(),
+            warp::reply::json(&ErrorResponse::new(
+                error.to_string(),
+                StatusCode::UNPROCESSABLE_ENTITY,
+            )),
             StatusCode::UNPROCESSABLE_ENTITY,
         ))
     } else if let Some(crate::Error::WrongPassword) = r.find() {
-        event!(Level::ERROR, "Entered wrong password");
+        event!(Level::ERROR, "Wrong E-Mail/Password combination");
         Ok(warp::reply::with_status(
-            "Wrong E-Mail/Password combination".to_string(),
+            warp::reply::json(&ErrorResponse::new(
+                "Wrong E-Mail/Password combination".to_string(),
+                StatusCode::UNAUTHORIZED,
+            )),
             StatusCode::UNAUTHORIZED,
         ))
     } else if let Some(crate::Error::UserAlreadyExists) = r.find() {
         event!(Level::ERROR, "User already exists");
         Ok(warp::reply::with_status(
-            "User already exists".to_string(),
+            warp::reply::json(&ErrorResponse::new(
+                "User already exists".to_string(),
+                StatusCode::BAD_REQUEST,
+            )),
             StatusCode::BAD_REQUEST,
         ))
     } else if let Some(crate::Error::MissingUserId) = r.find() {
         event!(Level::ERROR, "Missing User Id");
         Ok(warp::reply::with_status(
-            "Missing User Id".to_string(),
+            warp::reply::json(&ErrorResponse::new(
+                "Missing User Id".to_string(),
+                StatusCode::BAD_REQUEST,
+            )),
             StatusCode::BAD_REQUEST,
         ))
     } else {
         Ok(warp::reply::with_status(
-            "Route not found".to_string(),
+            warp::reply::json(&ErrorResponse::new(
+                "Route not found".to_string(),
+                StatusCode::NOT_FOUND,
+            )),
             StatusCode::NOT_FOUND,
         ))
     }
