@@ -31,6 +31,7 @@ pub enum Error {
     JwtError(JwtError),
     UserAlreadyExists,
     MissingUserId,
+    NotLoggedIn,
 }
 
 impl StdError for Error {}
@@ -58,6 +59,9 @@ impl std::fmt::Display for Error {
             }
             Error::MissingUserId => {
                 writeln!(f, "Missing User Id")
+            }
+            Error::NotLoggedIn => {
+                writeln!(f, "You are not logged in! Please Log in to get access.")
             }
         }
     }
@@ -93,6 +97,13 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
             JwtErrorKind::InvalidToken => Ok(warp::reply::with_status(
                 warp::reply::json(&ErrorResponse::new(
                     "Invalid Token".to_string(),
+                    StatusCode::NOT_ACCEPTABLE,
+                )),
+                StatusCode::NOT_ACCEPTABLE,
+            )),
+            JwtErrorKind::InvalidSignature => Ok(warp::reply::with_status(
+                warp::reply::json(&ErrorResponse::new(
+                    "Invalid Signature".to_string(),
                     StatusCode::NOT_ACCEPTABLE,
                 )),
                 StatusCode::NOT_ACCEPTABLE,
@@ -166,6 +177,15 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
                 StatusCode::BAD_REQUEST,
             )),
             StatusCode::BAD_REQUEST,
+        ))
+    } else if let Some(crate::Error::NotLoggedIn) = r.find() {
+        event!(Level::ERROR, "You are not logged in");
+        Ok(warp::reply::with_status(
+            warp::reply::json(&ErrorResponse::new(
+                "You are not logged in".to_string(),
+                StatusCode::UNAUTHORIZED,
+            )),
+            StatusCode::UNAUTHORIZED,
         ))
     } else {
         Ok(warp::reply::with_status(

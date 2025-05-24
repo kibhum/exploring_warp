@@ -1,11 +1,10 @@
 use crate::Store;
-use crate::types::user::{User, UserResponse};
+use crate::types::user::User;
 use crate::utils::authentication::{Claims, hash_password, verify_password};
 use handle_errors::Error as CustomError;
-use mongodb::bson::doc;
+use mongodb::bson::{Document, doc, oid::ObjectId};
 use std::time::{Duration, SystemTime};
-use warp::{Rejection, reject::Reject};
-
+use warp::http::{StatusCode, header};
 pub async fn register(store: Store, user: User) -> Result<impl warp::Reply, warp::Rejection> {
     let db = store.db;
     // Checking whether the username or email is already in use
@@ -50,10 +49,7 @@ pub async fn register(store: Store, user: User) -> Result<impl warp::Reply, warp
                 .as_millis() as usize
                 + Duration::from_millis(24 * 60 * 60 * 1000).as_millis() as usize;
             let user_claims = Claims::new(user_id, expires_in);
-            let token = Claims::create_token(&user_claims).map_err(|e| CustomError::JwtError(e))?;
-            let user_response = UserResponse::new(token);
-
-            Ok(warp::reply::json(&user_response))
+            Claims::send_created_token(user_claims)
         }
 
         Err(e) => {
@@ -90,11 +86,7 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
                                 + Duration::from_millis(24 * 60 * 60 * 1000).as_millis() as usize;
                             if let Some(user_id) = current_user._id {
                                 let user_claims = Claims::new(user_id.to_string(), expires_in);
-                                let token = Claims::create_token(&user_claims)
-                                    .map_err(|e| CustomError::JwtError(e))?;
-                                let user_response = UserResponse::new(token);
-
-                                Ok(warp::reply::json(&user_response))
+                                Claims::send_created_token(user_claims)
                             } else {
                                 return Err(warp::reject::custom(CustomError::MissingUserId));
                             }
@@ -115,5 +107,31 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
             eprintln!("{}", e);
             Err(warp::reject::custom(CustomError::DbError(e)))
         }
+    }
+}
+
+pub async fn logged_in_user(
+    session: Claims,
+    store: Store,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    // let filter: Document = Document::new();
+    let db = store.db;
+    // Checking whether the username or email exists
+    if let Ok(user_id) = ObjectId::parse_str(session.user_id) {
+        let user = db
+            .collection::<User>("user")
+            .find_one(doc! { "_id": user_id })
+            .await
+            .map_err(|e| warp::reject::custom(CustomError::DbError(e)));
+        if let Ok(curent_user) = user {
+            Ok(warp::reply::with_status(
+                warp::reply::json(&serde_json::json!({ "success": true, "user": curent_user })),
+                StatusCode::OK,
+            ))
+        } else {
+            Err(warp::reject::custom(CustomError::MissingUserId))
+        }
+    } else {
+        Err(warp::reject::custom(CustomError::MissingUserId))
     }
 }

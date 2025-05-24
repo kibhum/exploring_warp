@@ -80,8 +80,8 @@ async fn main() -> Result<(), std::io::Error> {
 
     // Routes
     // 1. Users path
-
     let register = warp::post()
+        .and(warp::path("auth"))
         .and(warp::path("register"))
         .and(warp::path::end())
         // .and(routes::authentication::auth())
@@ -90,16 +90,26 @@ async fn main() -> Result<(), std::io::Error> {
         .and_then(routes::user::register);
 
     let login = warp::post()
+        .and(warp::path("auth"))
         .and(warp::path("login"))
         .and(warp::path::end())
-        // .and(routes::authentication::auth())
+        // .and(utils::authentication::protect())
         .and(store_filter.clone())
         .and(warp::body::json())
         .and_then(routes::user::login);
 
+    let current_user = warp::get()
+        .and(warp::path("auth"))
+        .and(warp::path("me"))
+        .and(warp::path::end())
+        .and(utils::authentication::protect())
+        .and(store_filter.clone())
+        .and_then(routes::user::logged_in_user);
+
     // Combining all the routes
     let routes = register
         .or(login)
+        .or(current_user)
         .with(cors)
         .with(warp::trace::request())
         .recover(return_error);
