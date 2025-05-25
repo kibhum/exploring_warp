@@ -1,9 +1,14 @@
+use crate::routes::user;
+use crate::store::Store;
+use crate::types::user::User;
+use crate::utils::date_fns::convert_bson_datetime_to_seconds;
 use argon2::{self, Config, hash_encoded};
 use cookie::{Cookie, time::Duration};
 use handle_errors::Error as CustomError;
 use jsonwebtoken::{
     DecodingKey, EncodingKey, Header as JwtHeader, TokenData, Validation, decode, encode,
 };
+use mongodb::bson::{doc, oid::ObjectId};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
@@ -13,15 +18,13 @@ use warp::http::header;
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
     pub user_id: String,
+    pub iat: usize,
     pub exp: usize,
 }
 
 impl Claims {
-    pub fn new(user_id: String, timestamp: usize) -> Self {
-        Self {
-            user_id,
-            exp: timestamp,
-        }
+    pub fn new(user_id: String, iat: usize, exp: usize) -> Self {
+        Self { user_id, iat, exp }
     }
 
     pub fn send_created_token(user_claims: Claims) -> Result<impl warp::Reply, warp::Rejection> {
@@ -78,14 +81,47 @@ pub fn verify_password(hash: &str, password: String) -> Result<bool, argon2::Err
     argon2::verify_encoded(hash, password.as_bytes())
 }
 
-pub fn protect() -> impl Filter<Extract = (Claims,), Error = warp::Rejection> + Clone {
-    warp::header::optional::<String>("Authorization").and_then(|token: Option<String>| async move {
-        if let Some(token) = token {
-            if token.starts_with("Bearer ") {
-                if let Some(tkn) = token.split_whitespace().last() {
-                    match Claims::verify_token(tkn.to_string()) {
-                        Ok(token_data) => Ok(token_data.claims),
-                        Err(e) => Err(e),
+pub fn protect(store: Store) -> impl Filter<Extract = (User,), Error = warp::Rejection> + Clone {
+    warp::header::optional::<String>("Authorization").and_then(move |token: Option<String>| {
+        let db = store.db.clone();
+        async move {
+            if let Some(token) = token {
+                if token.starts_with("Bearer ") {
+                    if let Some(tkn) = token.split_whitespace().last() {
+                        match Claims::verify_token(tkn.to_string()) {
+                            Ok(token_data) => {
+                                let user_id = token_data.claims.user_id;
+                                match ObjectId::parse_str(&user_id) {
+                                    Ok(obj_id) => {
+                                        let db_user = db
+                                            .collection::<User>("user")
+                                            .find_one(doc! { "_id": obj_id })
+                                            .await
+                                            .map_err(|e| {
+                                                warp::reject::custom(CustomError::MissingUserId)
+                                            })?;
+                                        if let Some(usr) = db_user {
+                                            if convert_bson_datetime_to_seconds(
+                                                usr.password_changed_at,
+                                            ) > token_data.claims.iat
+                                            {
+                                                Err(warp::reject::custom(CustomError::NotLoggedIn))
+                                            } else {
+                                                Ok(usr)
+                                            }
+                                        } else {
+                                            Err(warp::reject::custom(CustomError::NotLoggedIn))
+                                        }
+                                    }
+                                    Err(e) => {
+                                        Err(warp::reject::custom(CustomError::ObjectIdError(e)))
+                                    }
+                                }
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        Err(warp::reject::custom(CustomError::NotLoggedIn))
                     }
                 } else {
                     Err(warp::reject::custom(CustomError::NotLoggedIn))
@@ -93,8 +129,6 @@ pub fn protect() -> impl Filter<Extract = (Claims,), Error = warp::Rejection> + 
             } else {
                 Err(warp::reject::custom(CustomError::NotLoggedIn))
             }
-        } else {
-            Err(warp::reject::custom(CustomError::NotLoggedIn))
         }
     })
 }

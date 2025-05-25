@@ -1,8 +1,13 @@
 use argon2::Error as ArgonError;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
+use mongodb::bson::oid::Error as ObjError;
 use mongodb::error::{Error as DBError, ErrorKind as DBErrorKind};
 use serde::Serialize;
-use std::{error::Error as StdError, f32::consts::E};
+use std::{
+    error::Error as StdErrorTrait,
+    io::{Error as StdError, ErrorKind as StdErrorKind},
+    num::ParseIntError,
+};
 use tracing::{Level, event};
 use warp::{
     Rejection, Reply, cors::CorsForbidden, filters::body::BodyDeserializeError, http::StatusCode,
@@ -25,6 +30,7 @@ impl ErrorResponse {
 
 #[derive(Debug)]
 pub enum Error {
+    CannotBindPort(ParseIntError),
     WrongPassword,
     DbError(DBError),
     ArgonLibraryError(ArgonError),
@@ -32,9 +38,10 @@ pub enum Error {
     UserAlreadyExists,
     MissingUserId,
     NotLoggedIn,
+    ObjectIdError(ObjError),
 }
 
-impl StdError for Error {}
+impl StdErrorTrait for Error {}
 
 impl std::fmt::Display for Error {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -62,6 +69,14 @@ impl std::fmt::Display for Error {
             }
             Error::NotLoggedIn => {
                 writeln!(f, "You are not logged in! Please Log in to get access.")
+            }
+            Error::CannotBindPort(e) => {
+                eprintln!("{}", e);
+                writeln!(f, "Cannot Bind Port.")
+            }
+            Error::ObjectIdError(e) => {
+                eprintln!("{}", e);
+                writeln!(f, "Cannot Bind Port.")
             }
         }
     }
@@ -104,6 +119,13 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
             JwtErrorKind::InvalidSignature => Ok(warp::reply::with_status(
                 warp::reply::json(&ErrorResponse::new(
                     "Invalid Signature".to_string(),
+                    StatusCode::NOT_ACCEPTABLE,
+                )),
+                StatusCode::NOT_ACCEPTABLE,
+            )),
+            JwtErrorKind::ExpiredSignature => Ok(warp::reply::with_status(
+                warp::reply::json(&ErrorResponse::new(
+                    "EXpired Token".to_string(),
                     StatusCode::NOT_ACCEPTABLE,
                 )),
                 StatusCode::NOT_ACCEPTABLE,
@@ -186,6 +208,33 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
                 StatusCode::UNAUTHORIZED,
             )),
             StatusCode::UNAUTHORIZED,
+        ))
+    } else if let Some(crate::Error::CannotBindPort(e)) = r.find() {
+        event!(Level::ERROR, "Cannot Bind To Port");
+        Ok(warp::reply::with_status(
+            warp::reply::json(&ErrorResponse::new(
+                "Cannot Bind To Port".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )),
+            StatusCode::INTERNAL_SERVER_ERROR,
+        ))
+    } else if let Some(crate::Error::ObjectIdError(e)) = r.find() {
+        match e {
+            ObjError::InvalidHexStringCharacter { c, index, hex, .. } => {
+                event!(Level::ERROR, "{c} {index} {hex}");
+            }
+            ObjError::InvalidHexStringLength { length, hex, .. } => {
+                event!(Level::ERROR, "{length} {hex}");
+            }
+            _ => event!(Level::ERROR, "Invalid Object ID Error"),
+        }
+        event!(Level::ERROR, "Cannot Bind To Port");
+        Ok(warp::reply::with_status(
+            warp::reply::json(&ErrorResponse::new(
+                "Cannot Bind To Port".to_string(),
+                StatusCode::INTERNAL_SERVER_ERROR,
+            )),
+            StatusCode::INTERNAL_SERVER_ERROR,
         ))
     } else {
         Ok(warp::reply::with_status(

@@ -13,7 +13,7 @@ use tracing_subscriber::fmt::format::FmtSpan;
 mod routes;
 mod types;
 mod utils;
-use handle_errors::return_error;
+use handle_errors::{Error as CustomError, return_error};
 use types::user::User;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -26,7 +26,7 @@ struct Args {
 }
 
 #[tokio::main]
-async fn main() -> Result<(), std::io::Error> {
+async fn main() -> Result<(), CustomError> {
     // Loading the env values
     dotenv::dotenv().ok();
     // Making sure the env values are set
@@ -46,7 +46,7 @@ async fn main() -> Result<(), std::io::Error> {
         .ok()
         .map(|val| val.parse::<u16>())
         .unwrap_or(Ok(8080))
-        .map_err(|_e| Error::new(ErrorKind::Other, "Port not parseble"))?;
+        .map_err(|e| CustomError::CannotBindPort(e))?;
     // Fetching default configurations
     let config = Config::builder()
         .add_source(config::File::with_name("setup"))
@@ -62,9 +62,10 @@ async fn main() -> Result<(), std::io::Error> {
         )
     });
     // Initializing the store with database connection
-    let store = Store::new(format!("{}", config.mongodb_uri)).await;
+    let store = Store::new(format!("{}", config.mongodb_uri)).await?;
     // Initializing collections
     store.clone().db.collection::<User>("user");
+    let cloned_store = store.clone();
     let store_filter = warp::any().map(move || store.clone());
 
     // Setting the tracing subscriber
@@ -84,7 +85,6 @@ async fn main() -> Result<(), std::io::Error> {
         .and(warp::path("auth"))
         .and(warp::path("register"))
         .and(warp::path::end())
-        // .and(routes::authentication::auth())
         .and(store_filter.clone())
         .and(warp::body::json())
         .and_then(routes::user::register);
@@ -93,7 +93,6 @@ async fn main() -> Result<(), std::io::Error> {
         .and(warp::path("auth"))
         .and(warp::path("login"))
         .and(warp::path::end())
-        // .and(utils::authentication::protect())
         .and(store_filter.clone())
         .and(warp::body::json())
         .and_then(routes::user::login);
@@ -102,8 +101,7 @@ async fn main() -> Result<(), std::io::Error> {
         .and(warp::path("auth"))
         .and(warp::path("me"))
         .and(warp::path::end())
-        .and(utils::authentication::protect())
-        .and(store_filter.clone())
+        .and(utils::authentication::protect(cloned_store.clone()))
         .and_then(routes::user::logged_in_user);
 
     // Combining all the routes

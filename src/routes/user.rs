@@ -1,10 +1,11 @@
 use crate::Store;
-use crate::types::user::{NewUser, User};
+use crate::types::user::{NewUser, User, UserResponse};
 use crate::utils::authentication::{Claims, hash_password, verify_password};
 use handle_errors::Error as CustomError;
-use mongodb::bson::{Document, doc, oid::ObjectId};
+use mongodb::bson::DateTime;
+use mongodb::bson::{doc, oid::ObjectId};
 use std::time::{Duration, SystemTime};
-use warp::http::{StatusCode, header};
+use warp::http::StatusCode;
 
 pub async fn register(store: Store, user: NewUser) -> Result<impl warp::Reply, warp::Rejection> {
     let db = store.db;
@@ -37,6 +38,10 @@ pub async fn register(store: Store, user: NewUser) -> Result<impl warp::Reply, w
         email: user.email,
         password: hashed_password,
         username: user.username,
+        created_at: Some(DateTime::now()),
+        is_active: true,
+        last_login: Some(DateTime::now()),
+        updated_at: Some(DateTime::now()),
     };
 
     let new_user: mongodb::results::InsertOneResult = db
@@ -47,13 +52,14 @@ pub async fn register(store: Store, user: NewUser) -> Result<impl warp::Reply, w
 
     let user_id = new_user.inserted_id.as_object_id().unwrap().to_string();
 
-    let expires_in = SystemTime::now()
+    let current_time = SystemTime::now()
         .duration_since(SystemTime::UNIX_EPOCH)
         .unwrap()
-        .as_millis() as usize
-        + Duration::from_millis(24 * 60 * 60 * 1000).as_millis() as usize;
+        .as_secs() as usize;
 
-    let user_claims = Claims::new(user_id, expires_in);
+    let expires_in = current_time + Duration::from_secs(24 * 60 * 60 * 1000).as_secs() as usize;
+
+    let user_claims = Claims::new(user_id, expires_in, expires_in);
 
     Claims::send_created_token(user_claims)
 }
@@ -78,13 +84,16 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
                 match verify_password(&current_user.password, user.password) {
                     Ok(success) => {
                         if success {
-                            let expires_in = SystemTime::now()
+                            let current_time = SystemTime::now()
                                 .duration_since(SystemTime::UNIX_EPOCH)
                                 .unwrap()
-                                .as_millis() as usize
-                                + Duration::from_millis(24 * 60 * 60 * 1000).as_millis() as usize;
-                            if let Some(user_id) = current_user._id {
-                                let user_claims = Claims::new(user_id.to_string(), expires_in);
+                                .as_secs() as usize;
+
+                            let expires_in = current_time
+                                + Duration::from_secs(24 * 60 * 60 * 1000).as_secs() as usize;
+                            if let Some(user_id) = current_user.id {
+                                let user_claims =
+                                    Claims::new(user_id.to_string(), current_time, expires_in);
                                 Claims::send_created_token(user_claims)
                             } else {
                                 return Err(warp::reject::custom(CustomError::MissingUserId));
@@ -109,31 +118,9 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
     }
 }
 
-pub async fn logged_in_user(
-    session: Claims,
-    store: Store,
-) -> Result<impl warp::Reply, warp::Rejection> {
-    // let filter: Document = Document::new();
-    let db = store.db;
-    // Checking whether the username or email exists
-    if let Ok(user_id) = ObjectId::parse_str(session.user_id) {
-        let user = db
-            .collection::<User>("user")
-            .find_one(doc! { "_id": user_id })
-            .await
-            .map_err(|e| warp::reject::custom(CustomError::DbError(e)));
-        if let Ok(curent_user) = user {
-            match curent_user {
-                Some(usr) => Ok(warp::reply::with_status(
-                    warp::reply::json(&serde_json::json!({ "success": true, "user": usr })),
-                    StatusCode::OK,
-                )),
-                None => Err(warp::reject::custom(CustomError::MissingUserId)),
-            }
-        } else {
-            Err(warp::reject::custom(CustomError::MissingUserId))
-        }
-    } else {
-        Err(warp::reject::custom(CustomError::MissingUserId))
-    }
+pub async fn logged_in_user(user: User) -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(warp::reply::with_status(
+        warp::reply::json(&serde_json::json!({ "success": true, "user": UserResponse::new(user) })),
+        StatusCode::OK,
+    ))
 }
