@@ -10,6 +10,8 @@ pub fn format_bson_datetime(dt: Option<BsonDateTime>) -> String {
     chrono_dt.format("%Y-%m-%d %H:%M:%S").to_string()
 }
 
-pub fn convert_bson_datetime_to_seconds(dt: Option<BsonDateTime>) -> usize {
-    dt.unwrap_or_else(BsonDateTime::now).timestamp_millis() as usize
+pub fn convert_bson_datetime_to_usize(dt: BsonDateTime) -> usize {
+    DateTime::<Utc>::from_timestamp_millis(dt.timestamp_millis())
+        .unwrap_or_else(|| Utc::now())
+        .timestamp() as usize
 }

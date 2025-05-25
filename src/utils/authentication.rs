@@ -1,7 +1,6 @@
-use crate::routes::user;
 use crate::store::Store;
 use crate::types::user::User;
-use crate::utils::date_fns::convert_bson_datetime_to_seconds;
+use crate::utils::date_fns::convert_bson_datetime_to_usize;
 use argon2::{self, Config, hash_encoded};
 use cookie::{Cookie, time::Duration};
 use handle_errors::Error as CustomError;
@@ -101,13 +100,20 @@ pub fn protect(store: Store) -> impl Filter<Extract = (User,), Error = warp::Rej
                                                 warp::reject::custom(CustomError::MissingUserId)
                                             })?;
                                         if let Some(usr) = db_user {
-                                            if convert_bson_datetime_to_seconds(
-                                                usr.password_changed_at,
-                                            ) > token_data.claims.iat
-                                            {
-                                                Err(warp::reject::custom(CustomError::NotLoggedIn))
-                                            } else {
-                                                Ok(usr)
+                                            match usr.password_changed_at {
+                                                Some(password_changed_at) => {
+                                                    if convert_bson_datetime_to_usize(
+                                                        password_changed_at,
+                                                    ) > token_data.claims.iat
+                                                    {
+                                                        Err(warp::reject::custom(
+                                                            CustomError::NotLoggedIn,
+                                                        ))
+                                                    } else {
+                                                        Ok(usr)
+                                                    }
+                                                }
+                                                None => Ok(usr),
                                             }
                                         } else {
                                             Err(warp::reject::custom(CustomError::NotLoggedIn))
