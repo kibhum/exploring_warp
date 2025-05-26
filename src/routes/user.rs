@@ -2,8 +2,8 @@ use crate::Store;
 use crate::types::user::{NewUser, User, UserResponse};
 use crate::utils::authentication::{Claims, hash_password, verify_password};
 use handle_errors::Error as CustomError;
-use mongodb::bson::DateTime;
-use mongodb::bson::{doc, oid::ObjectId};
+use mongodb::bson::{DateTime, doc};
+use mongodb::options::UpdateOptions;
 use std::time::{Duration, SystemTime};
 use warp::http::StatusCode;
 
@@ -65,10 +65,9 @@ pub async fn register(store: Store, user: NewUser) -> Result<impl warp::Reply, w
 }
 
 pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::Rejection> {
-    let db = store.db;
+    let user_collection = store.db.collection::<User>("user");
     // Checking whether the username or email exists
-    match db
-        .collection::<User>("user")
+    match user_collection
         .find_one(doc! {
             "$or": [
                 { "username": &user.username },
@@ -92,9 +91,23 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
                             let expires_in = current_time
                                 + Duration::from_secs(24 * 60 * 60 * 1000).as_secs() as usize;
                             if let Some(user_id) = current_user.id {
-                                let user_claims =
-                                    Claims::new(user_id.to_string(), current_time, expires_in);
-                                Claims::send_created_token(user_claims)
+                                let filter = doc! { "_id": &user_id };
+                                let update = doc! { "$set": { "last_login": DateTime::now() } };
+                                match user_collection.update_one(filter, update).await {
+                                    Ok(update_result) => {
+                                        if update_result.matched_count == 1 {
+                                            let user_claims = Claims::new(
+                                                user_id.to_string(),
+                                                current_time,
+                                                expires_in,
+                                            );
+                                            Claims::send_created_token(user_claims)
+                                        } else {
+                                            Err(warp::reject::custom(CustomError::MissingUserId))
+                                        }
+                                    }
+                                    Err(_) => Err(warp::reject::custom(CustomError::MissingUserId)),
+                                }
                             } else {
                                 return Err(warp::reject::custom(CustomError::MissingUserId));
                             }

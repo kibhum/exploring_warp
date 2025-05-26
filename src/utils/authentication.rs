@@ -1,7 +1,7 @@
 use crate::store::Store;
 use crate::types::user::User;
 use crate::utils::date_fns::convert_bson_datetime_to_usize;
-use argon2::{self, Config, hash_encoded};
+use argon2::{self, Config};
 use cookie::{Cookie, time::Duration};
 use handle_errors::Error as CustomError;
 use jsonwebtoken::{
