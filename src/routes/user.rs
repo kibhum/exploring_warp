@@ -1,9 +1,11 @@
 use crate::Store;
-use crate::types::user::{NewUser, User, UserResponse};
+use crate::types::user::{
+    ForgotPasswordUser, NewUser, Passwords, User, UserExtracts, UserResponse,
+};
 use crate::utils::authentication::{Claims, hash_password, verify_password};
 use handle_errors::Error as CustomError;
+use mongodb::Collection;
 use mongodb::bson::{DateTime, doc};
-use mongodb::options::UpdateOptions;
 use std::time::{Duration, SystemTime};
 use warp::http::StatusCode;
 
@@ -59,7 +61,7 @@ pub async fn register(store: Store, user: NewUser) -> Result<impl warp::Reply, w
 
     let expires_in = current_time + Duration::from_secs(24 * 60 * 60 * 1000).as_secs() as usize;
 
-    let user_claims = Claims::new(user_id, expires_in, expires_in);
+    let user_claims = Claims::new(user_id, expires_in, expires_in, None);
 
     Claims::send_created_token(user_claims)
 }
@@ -100,6 +102,7 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
                                                 user_id.to_string(),
                                                 current_time,
                                                 expires_in,
+                                                None,
                                             );
                                             Claims::send_created_token(user_claims)
                                         } else {
@@ -131,9 +134,68 @@ pub async fn login(store: Store, user: User) -> Result<impl warp::Reply, warp::R
     }
 }
 
-pub async fn logged_in_user(user: User) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn logged_in_user(
+    user_extracts: UserExtracts,
+) -> Result<impl warp::Reply, warp::Rejection> {
     Ok(warp::reply::with_status(
-        warp::reply::json(&serde_json::json!({ "success": true, "user": UserResponse::new(user) })),
+        warp::reply::json(
+            &serde_json::json!({ "success": true, "user": UserResponse::new(user_extracts.user_extracts.0) }),
+        ),
         StatusCode::OK,
     ))
+}
+
+pub async fn forgot_password(
+    store: Store,
+    user: ForgotPasswordUser,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    let user_collection = store.db.collection::<User>("user");
+    // Checking whether the email exists
+    match user_collection
+        .find_one(doc! {
+            "$or": [
+                { "email": &user.email }
+            ]
+        })
+        .show_record_id(true)
+        .await
+    {
+        Ok(user_option) => {
+            if let Some(current_user) = user_option {
+                let current_time = SystemTime::now()
+                    .duration_since(SystemTime::UNIX_EPOCH)
+                    .unwrap()
+                    .as_secs() as usize;
+
+                let expires_in = current_time + Duration::from_secs(30 * 60).as_secs() as usize;
+                if let Some(user_id) = current_user.id {
+                    let user_claims = Claims::new(
+                        user_id.to_string(),
+                        current_time,
+                        expires_in,
+                        Some("Password_Reset".to_string()),
+                    );
+                    Claims::send_created_token(user_claims)
+                } else {
+                    return Err(warp::reject::custom(CustomError::MissingUserId));
+                }
+            } else {
+                return Err(warp::reject::custom(CustomError::WrongPassword));
+            }
+        }
+        Err(e) => {
+            eprintln!("{}", e);
+            Err(warp::reject::custom(CustomError::DbError(e)))
+        }
+    }
+}
+
+pub async fn reset_password(
+    user_extracts: UserExtracts,
+    new_password: Passwords,
+) -> Result<impl warp::Reply, warp::Rejection> {
+    Ok(warp::reply::json(&serde_json::json!({
+        "success": true,
+        "user": user_extracts.user_extracts.0.username,
+    })))
 }

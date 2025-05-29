@@ -125,7 +125,7 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
             )),
             JwtErrorKind::ExpiredSignature => Ok(warp::reply::with_status(
                 warp::reply::json(&ErrorResponse::new(
-                    "EXpired Token".to_string(),
+                    "Expired Token".to_string(),
                     StatusCode::NOT_ACCEPTABLE,
                 )),
                 StatusCode::NOT_ACCEPTABLE,

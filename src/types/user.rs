@@ -1,5 +1,5 @@
 use crate::utils::date_fns::format_bson_datetime;
-use chrono::prelude::*;
+use mongodb::Collection;
 use mongodb::bson::{DateTime, oid::ObjectId};
 use serde::{Deserialize, Serialize};
 
@@ -63,6 +63,28 @@ impl UserResponse {
             email: user.email,
             is_active: user.is_active,
             last_login: format_bson_datetime(user.last_login),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ForgotPasswordUser {
+    pub email: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Passwords {
+    pub password: String,
+    pub password_confirmation: String,
+}
+
+pub struct UserExtracts {
+    pub user_extracts: (User, Collection<User>),
+}
+impl UserExtracts {
+    pub fn new(user: User, user_collection: Collection<User>) -> Self {
+        Self {
+            user_extracts: (user, user_collection),
         }
     }
 }

@@ -14,6 +14,7 @@ mod routes;
 mod types;
 mod utils;
 use handle_errors::{Error as CustomError, return_error};
+use std::collections::HashMap;
 use types::user::User;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -97,6 +98,14 @@ async fn main() -> Result<(), CustomError> {
         .and(warp::body::json())
         .and_then(routes::user::login);
 
+    let forgot_password = warp::post()
+        .and(warp::path("auth"))
+        .and(warp::path("forgot_password"))
+        .and(warp::path::end())
+        .and(store_filter.clone())
+        .and(warp::body::json())
+        .and_then(routes::user::forgot_password);
+
     let current_user = warp::get()
         .and(warp::path("auth"))
         .and(warp::path("me"))
@@ -104,10 +113,20 @@ async fn main() -> Result<(), CustomError> {
         .and(utils::authentication::protect(cloned_store.clone()))
         .and_then(routes::user::logged_in_user);
 
+    let reset_password = warp::post()
+        .and(warp::path("auth"))
+        .and(warp::path("reset_password"))
+        .and(warp::path::end())
+        .and(utils::authentication::protect(cloned_store.clone()))
+        .and(warp::body::json())
+        .and_then(routes::user::reset_password);
+
     // Combining all the routes
     let routes = register
         .or(login)
         .or(current_user)
+        .or(forgot_password)
+        .or(reset_password)
         .with(cors)
         .with(warp::trace::request())
         .recover(return_error);
