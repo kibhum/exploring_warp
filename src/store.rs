@@ -1,3 +1,4 @@
+use crate::types::user::User;
 use handle_errors::Error as CustomError;
 use mongodb::{Client, Database};
 
@@ -11,9 +12,13 @@ impl Store {
         let client = Client::with_uri_str(uri)
             .await
             .map_err(|e| CustomError::DbError(e))?;
-        
+
         Ok(Self {
             db: client.database("RUST"),
         })
+    }
+
+    pub fn initialize_collections(&self) {
+        self.db.collection::<User>("user");
     }
 }

@@ -2,7 +2,7 @@ use crate::store::Store;
 use crate::types::user::{User,UserExtracts};
 use crate::utils::date_fns::convert_bson_datetime_to_usize;
 use argon2::{self, Config};
-use cookie::{Cookie, time::Duration};
+// use cookie::{Cookie, time::Duration};
 use handle_errors::Error as CustomError;
 use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use jsonwebtoken::{
@@ -14,7 +14,8 @@ use rand::RngCore;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 use warp::http::StatusCode;
-use warp::http::header;
+// use warp::http::header;
+use std::sync::Arc;
 
 #[derive(Debug, Serialize, Deserialize)]
 pub struct Claims {
@@ -121,7 +122,7 @@ pub fn verify_password(hash: &str, password: String) -> Result<bool, argon2::Err
 }
 
 pub fn protect(
-    store: Store,
+    store: Arc<Store>,
 ) -> impl Filter<Extract = (UserExtracts,), Error = warp::Rejection> + Clone {
     warp::header::optional::<String>("Authorization").and_then(move |token: Option<String>| {
         let db = store.db.clone();
@@ -155,10 +156,10 @@ pub fn protect(
                                                                 CustomError::NotLoggedIn,
                                                             ))
                                                         } else {
-                                                            Ok(UserExtracts::new(usr,user_collection))
+                                                            Ok((usr,user_collection))
                                                         }
                                                     }
-                                                    None => Ok(UserExtracts::new(usr,user_collection))
+                                                    None => Ok((usr,user_collection))
                                                 }
                                             } else {
                                                 Err(warp::reject::custom(CustomError::NotLoggedIn))
@@ -168,6 +169,52 @@ pub fn protect(
                                             Err(warp::reject::custom(CustomError::ObjectIdError(e)))
                                         }
                                     }
+                                } else if  token_data.claims.purpose.is_some() {
+                                    Err(warp::reject::custom(
+                                        CustomError::JwtError(JwtError::from(
+                                            JwtErrorKind::InvalidToken,
+                                        )),
+                                    ))
+                                } else {
+                                    Err(warp::reject::custom(CustomError::NotLoggedIn))
+                                }
+                            }
+                            Err(e) => Err(e),
+                        }
+                    } else {
+                        Err(warp::reject::custom(CustomError::NotLoggedIn))
+                    }
+                } else {
+                    Err(warp::reject::custom(CustomError::NotLoggedIn))
+                }
+            } else {
+                Err(warp::reject::custom(CustomError::NotLoggedIn))
+            }
+        }
+    })
+}
+
+
+
+pub fn validate_password_reset_token(
+    store: Arc<Store>,
+) -> impl Filter<Extract = (UserExtracts,), Error = warp::Rejection> + Clone {
+    warp::header::optional::<String>("Authorization").and_then(move |token: Option<String>| {
+        let db = store.db.clone();
+        let user_collection: mongodb::Collection<User> =
+            store.db.clone().collection::<User>("user");
+        async move {
+            if let Some(token) = token {
+                if token.starts_with("Bearer ") {
+                    if let Some(tkn) = token.split_whitespace().last() {
+                        match Claims::verify_token(tkn.to_string()) {
+                            Ok(token_data) => {
+                                if token_data.claims.purpose.is_none() {
+                                    Err(warp::reject::custom(
+                                        CustomError::JwtError(JwtError::from(
+                                            JwtErrorKind::InvalidToken,
+                                        )),
+                                    ))
                                 } else if  token_data.claims.purpose.is_some() {
                                     let user_id = token_data.claims.user_id;
                                     match ObjectId::parse_str(&user_id) {
@@ -192,10 +239,10 @@ pub fn protect(
                                                                 )),
                                                             ))
                                                         } else {
-                                                            Ok(UserExtracts::new(usr,user_collection))
+                                                            Ok((usr,user_collection))
                                                         }
                                                     }
-                                                    None => Ok(UserExtracts::new(usr,user_collection))
+                                                    None => Ok((usr,user_collection))
                                                 }
                                             } else {
                                                 Err(warp::reject::custom(CustomError::NotLoggedIn))

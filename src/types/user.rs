@@ -78,13 +78,4 @@ pub struct Passwords {
     pub password_confirmation: String,
 }
 
-pub struct UserExtracts {
-    pub user_extracts: (User, Collection<User>),
-}
-impl UserExtracts {
-    pub fn new(user: User, user_collection: Collection<User>) -> Self {
-        Self {
-            user_extracts: (user, user_collection),
-        }
-    }
-}
+pub type UserExtracts = (User, Collection<User>);

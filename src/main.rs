@@ -1,12 +1,8 @@
 use config::Config;
 use dotenv;
 use serde::{Deserialize, Serialize};
-use std::{
-    env,
-    fmt::format,
-    io::{Error, ErrorKind},
-};
-use warp::{Filter, http::Method, reply::html};
+use std::env;
+use warp::{Filter, http::Method};
 mod store;
 use store::Store;
 use tracing_subscriber::fmt::format::FmtSpan;
@@ -14,7 +10,8 @@ mod routes;
 mod types;
 mod utils;
 use handle_errors::{Error as CustomError, return_error};
-use std::collections::HashMap;
+use routes::user::user_routes;
+use std::sync::Arc;
 use types::user::User;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
@@ -63,11 +60,11 @@ async fn main() -> Result<(), CustomError> {
         )
     });
     // Initializing the store with database connection
-    let store = Store::new(format!("{}", config.mongodb_uri)).await?;
+    let store = Arc::new(Store::new(format!("{}", config.mongodb_uri)).await?);
     // Initializing collections
-    store.clone().db.collection::<User>("user");
-    let cloned_store = store.clone();
-    let store_filter = warp::any().map(move || store.clone());
+    store.initialize_collections();
+    // let cloned_store = store.clone();
+    // let store_filter = warp::any().map(move || store.clone());
 
     // Setting the tracing subscriber
     tracing_subscriber::fmt()
@@ -82,51 +79,9 @@ async fn main() -> Result<(), CustomError> {
 
     // Routes
     // 1. Users path
-    let register = warp::post()
-        .and(warp::path("auth"))
-        .and(warp::path("register"))
-        .and(warp::path::end())
-        .and(store_filter.clone())
-        .and(warp::body::json())
-        .and_then(routes::user::register);
-
-    let login = warp::post()
-        .and(warp::path("auth"))
-        .and(warp::path("login"))
-        .and(warp::path::end())
-        .and(store_filter.clone())
-        .and(warp::body::json())
-        .and_then(routes::user::login);
-
-    let forgot_password = warp::post()
-        .and(warp::path("auth"))
-        .and(warp::path("forgot_password"))
-        .and(warp::path::end())
-        .and(store_filter.clone())
-        .and(warp::body::json())
-        .and_then(routes::user::forgot_password);
-
-    let current_user = warp::get()
-        .and(warp::path("auth"))
-        .and(warp::path("me"))
-        .and(warp::path::end())
-        .and(utils::authentication::protect(cloned_store.clone()))
-        .and_then(routes::user::logged_in_user);
-
-    let reset_password = warp::post()
-        .and(warp::path("auth"))
-        .and(warp::path("reset_password"))
-        .and(warp::path::end())
-        .and(utils::authentication::protect(cloned_store.clone()))
-        .and(warp::body::json())
-        .and_then(routes::user::reset_password);
 
     // Combining all the routes
-    let routes = register
-        .or(login)
-        .or(current_user)
-        .or(forgot_password)
-        .or(reset_password)
+    let routes = user_routes::user_routes(store)
         .with(cors)
         .with(warp::trace::request())
         .recover(return_error);
