@@ -6,13 +6,13 @@ use warp::{Filter, http::Method};
 mod store;
 use store::Store;
 use tracing_subscriber::fmt::format::FmtSpan;
+mod controllers;
 mod routes;
 mod types;
 mod utils;
 use handle_errors::{Error as CustomError, return_error};
-use routes::user::user_routes;
+use routes::user::user;
 use std::sync::Arc;
-use types::user::User;
 
 #[derive(Debug, Default, Serialize, Deserialize, PartialEq)]
 struct Args {
@@ -81,7 +81,7 @@ async fn main() -> Result<(), CustomError> {
     // 1. Users path
 
     // Combining all the routes
-    let routes = user_routes::user_routes(store)
+    let routes = user::user_routes(store)
         .with(cors)
         .with(warp::trace::request())
         .recover(return_error);
