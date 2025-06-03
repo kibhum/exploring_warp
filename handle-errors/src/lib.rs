@@ -3,11 +3,7 @@ use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use mongodb::bson::oid::Error as ObjError;
 use mongodb::error::{Error as DBError, ErrorKind as DBErrorKind};
 use serde::Serialize;
-use std::{
-    error::Error as StdErrorTrait,
-    io::{Error as StdError, ErrorKind as StdErrorKind},
-    num::ParseIntError,
-};
+use std::{error::Error as StdErrorTrait, num::ParseIntError};
 use tracing::{Level, event};
 use warp::{
     Rejection, Reply, cors::CorsForbidden, filters::body::BodyDeserializeError, http::StatusCode,

@@ -26,7 +26,7 @@ struct Args {
 #[tokio::main]
 async fn main() -> Result<(), CustomError> {
     // Loading the env values
-    dotenv::dotenv().ok();
+    dotenv::from_filename("config.env").ok();
     // Making sure the env values are set
     // TODO: CREATE A MACRO
 
@@ -39,7 +39,7 @@ async fn main() -> Result<(), CustomError> {
     if let Err(_) = env::var("DATABASE_PORT") {
         panic!("Database port not set, Default values will be used");
     }
-
+    utils::email::send_mail().await;
     let port = env::var("port")
         .ok()
         .map(|val| val.parse::<u16>())
@@ -76,9 +76,6 @@ async fn main() -> Result<(), CustomError> {
         .allow_any_origin()
         .allow_header("content-type")
         .allow_methods(&[Method::GET, Method::POST, Method::PUT, Method::DELETE]);
-
-    // Routes
-    // 1. Users path
 
     // Combining all the routes
     let routes = user::user_routes(store)
