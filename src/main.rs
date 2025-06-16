@@ -74,7 +74,7 @@ async fn main() -> Result<(), CustomError> {
     // Implemenenting cors
     let cors = warp::cors()
         .allow_any_origin()
-        .allow_header("content-type")
+        .allow_headers(["Authorization", "content-type"])
         .allow_methods(&[Method::GET, Method::POST, Method::PUT, Method::DELETE]);
 
     // Combining all the routes
