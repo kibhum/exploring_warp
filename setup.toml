@@ -2,4 +2,4 @@ log_level = "info"
 mongodb_uri = "mongodb://localhost:27017/RUST"
 database_port = 27017
 database_name = "RUST"
-port = 8080
+port = 5000

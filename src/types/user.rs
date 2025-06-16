@@ -55,6 +55,12 @@ pub struct UserResponse {
     pub last_login: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct LoginUser {
+    pub username: String,
+    pub password: String,
+}
+
 impl UserResponse {
     pub fn new(user: User) -> Self {
         Self {

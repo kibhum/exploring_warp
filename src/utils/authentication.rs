@@ -8,7 +8,6 @@ use jsonwebtoken::errors::{Error as JwtError, ErrorKind as JwtErrorKind};
 use jsonwebtoken::{
     DecodingKey, EncodingKey, Header as JwtHeader, TokenData, Validation, decode, encode,
 };
-use mongodb::Collection;
 use mongodb::bson::{doc, oid::ObjectId};
 use rand::RngCore;
 use serde::{Deserialize, Serialize};

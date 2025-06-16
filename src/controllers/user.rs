@@ -1,6 +1,6 @@
 use crate::Store;
 use crate::types::user::{
-    ForgotPasswordUser, NewUser, Passwords, User, UserExtracts, UserResponse,
+    ForgotPasswordUser, LoginUser, NewUser, Passwords, User, UserExtracts, UserResponse,
 };
 use crate::utils::authentication::{Claims, hash_password, verify_password};
 use handle_errors::Error as CustomError;
@@ -69,15 +69,15 @@ pub async fn register(
     Claims::send_created_token(user_claims)
 }
 
-pub async fn login(store: Arc<Store>, user: User) -> Result<impl warp::Reply, warp::Rejection> {
+pub async fn login(
+    store: Arc<Store>,
+    user: LoginUser,
+) -> Result<impl warp::Reply, warp::Rejection> {
     let user_collection = store.db.collection::<User>("user");
     // Checking whether the username or email exists
     match user_collection
         .find_one(doc! {
-            "$or": [
-                { "username": &user.username },
-                { "email": &user.email }
-            ]
+            "username": &user.username
         })
         .show_record_id(true)
         .await

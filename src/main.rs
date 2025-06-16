@@ -40,7 +40,7 @@ async fn main() -> Result<(), CustomError> {
         panic!("Database port not set, Default values will be used");
     }
     utils::email::send_mail().await;
-    let port = env::var("port")
+    let port = env::var("PORT")
         .ok()
         .map(|val| val.parse::<u16>())
         .unwrap_or(Ok(8080))
