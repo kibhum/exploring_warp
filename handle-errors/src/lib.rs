@@ -6,8 +6,13 @@ use serde::Serialize;
 use std::{error::Error as StdErrorTrait, num::ParseIntError};
 use tracing::{Level, event};
 use warp::{
-    Rejection, Reply, cors::CorsForbidden, filters::body::BodyDeserializeError, http::StatusCode,
+    Rejection, Reply,
+    cors::CorsForbidden,
+    filters::body::BodyDeserializeError,
+    http::StatusCode,
     reject::Reject,
+    reply,
+    reply::{WithHeader, WithStatus},
 };
 
 #[derive(Serialize)]
@@ -21,6 +26,29 @@ impl ErrorResponse {
             message,
             status_code: status.as_u16(),
         }
+    }
+
+    fn format_response(
+        &self,
+    ) -> warp::reply::WithHeader<warp::reply::WithHeader<WithStatus<warp::reply::Json>>> {
+        let json = warp::reply::json(&ErrorResponse::new(
+            self.message.to_string(),
+            StatusCode::from_u16(self.status_code).unwrap(),
+        ));
+
+        let reply = reply::with_status(json, StatusCode::from_u16(self.status_code).unwrap());
+        let reply = reply::with_header(
+            reply,
+            "Access-Control-Allow-Origin",
+            "http://localhost:8080",
+        );
+        let reply = reply::with_header(
+            reply,
+            "Access-Control-Allow-Headers",
+            "content-type, authorization",
+        );
+
+        reply
     }
 }
 
@@ -81,139 +109,126 @@ impl std::fmt::Display for Error {
 impl Reject for Error {}
 
 // Global Error handler
-pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
+pub async fn return_error(
+    r: Rejection,
+) -> Result<
+    warp::reply::WithHeader<warp::reply::WithHeader<WithStatus<warp::reply::Json>>>,
+    Rejection,
+> {
     if let Some(crate::Error::DbError(e)) = r.find() {
         match *e.kind.clone() {
-            DBErrorKind::Authentication { message, .. } => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(message, StatusCode::UNAUTHORIZED)),
-                StatusCode::UNAUTHORIZED,
-            )),
-            DBErrorKind::ServerSelection { message, .. } => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    message,
-                    StatusCode::SERVICE_UNAVAILABLE,
-                )),
-                StatusCode::SERVICE_UNAVAILABLE,
-            )),
-            _ => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Internal Server Error".to_string(),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )),
+            DBErrorKind::Authentication { message, .. } => {
+                Ok(ErrorResponse::new(message, StatusCode::UNAUTHORIZED).format_response())
+            }
+            DBErrorKind::ServerSelection { message, .. } => {
+                Ok(ErrorResponse::new(message, StatusCode::SERVICE_UNAVAILABLE).format_response())
+            }
+            _ => Ok(ErrorResponse::new(
+                "Internal Server Error".to_string(),
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )),
+            )
+            .format_response()),
         }
     } else if let Some(crate::Error::JwtError(e)) = r.find() {
         match e.kind() {
-            JwtErrorKind::InvalidToken => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Invalid Token".to_string(),
-                    StatusCode::NOT_ACCEPTABLE,
-                )),
+            JwtErrorKind::InvalidToken => Ok(ErrorResponse::new(
+                "Invalid Token".to_string(),
                 StatusCode::NOT_ACCEPTABLE,
-            )),
-            JwtErrorKind::InvalidSignature => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Invalid Signature".to_string(),
-                    StatusCode::NOT_ACCEPTABLE,
-                )),
+            )
+            .format_response()),
+
+            JwtErrorKind::InvalidSignature => Ok(ErrorResponse::new(
+                "Invalid Signature".to_string(),
                 StatusCode::NOT_ACCEPTABLE,
-            )),
-            JwtErrorKind::ExpiredSignature => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Expired Token".to_string(),
-                    StatusCode::NOT_ACCEPTABLE,
-                )),
+            )
+            .format_response()),
+            JwtErrorKind::ExpiredSignature => Ok(ErrorResponse::new(
+                "Expired Token".to_string(),
                 StatusCode::NOT_ACCEPTABLE,
-            )),
-            _ => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Internal Server Error".to_string(),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )),
+            )
+            .format_response()),
+            _ => Ok(ErrorResponse::new(
+                "Internal Server Error".to_string(),
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )),
+            )
+            .format_response()),
         }
     } else if let Some(crate::Error::ArgonLibraryError(e)) = r.find() {
         event!(Level::ERROR, "{}", e);
         match e {
-            ArgonError::PwdTooLong => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Password Too Long".to_string(),
-                    StatusCode::NOT_ACCEPTABLE,
-                )),
+            ArgonError::PwdTooLong => Ok(ErrorResponse::new(
+                "Password Too Long".to_string(),
                 StatusCode::NOT_ACCEPTABLE,
-            )),
-            _ => Ok(warp::reply::with_status(
-                warp::reply::json(&ErrorResponse::new(
-                    "Internal Server Error".to_string(),
-                    StatusCode::INTERNAL_SERVER_ERROR,
-                )),
+            )
+            .format_response()),
+            _ => Ok(ErrorResponse::new(
+                "Internal Server Error".to_string(),
                 StatusCode::INTERNAL_SERVER_ERROR,
-            )),
+            )
+            .format_response()),
         }
     } else if let Some(error) = r.find::<CorsForbidden>() {
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                error.to_string(),
-                StatusCode::FORBIDDEN,
-            )),
-            StatusCode::FORBIDDEN,
-        ))
+        Ok(ErrorResponse::new(error.to_string(), StatusCode::FORBIDDEN).format_response())
     } else if let Some(error) = r.find::<BodyDeserializeError>() {
         event!(Level::ERROR, "{}", error);
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                error.to_string(),
-                StatusCode::UNPROCESSABLE_ENTITY,
-            )),
-            StatusCode::UNPROCESSABLE_ENTITY,
-        ))
+        Ok(
+            ErrorResponse::new(error.to_string(), StatusCode::UNPROCESSABLE_ENTITY)
+                .format_response(),
+        )
     } else if let Some(crate::Error::WrongPassword) = r.find() {
         event!(Level::ERROR, "Wrong E-Mail/Password combination");
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "Wrong E-Mail/Password combination".to_string(),
-                StatusCode::UNAUTHORIZED,
-            )),
+        // Ok(warp::reply::with_status(
+        //     warp::reply::json(&ErrorResponse::new(
+        //         "Wrong E-Mail/Password combination".to_string(),
+        //         StatusCode::UNAUTHORIZED,
+        //     )),
+        //     StatusCode::UNAUTHORIZED,
+        // ))
+
+        let json = warp::reply::json(&ErrorResponse::new(
+            "Wrong E-Mail/Password combination".to_string(),
             StatusCode::UNAUTHORIZED,
-        ))
+        ));
+
+        let reply = reply::with_status(json, StatusCode::UNAUTHORIZED);
+        let reply = reply::with_header(
+            reply,
+            "Access-Control-Allow-Origin",
+            "http://localhost:8080",
+        );
+        let reply = reply::with_header(
+            reply,
+            "Access-Control-Allow-Headers",
+            "content-type, authorization",
+        );
+
+        Ok(reply)
     } else if let Some(crate::Error::UserAlreadyExists) = r.find() {
         event!(Level::ERROR, "User already exists");
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "User already exists".to_string(),
-                StatusCode::BAD_REQUEST,
-            )),
-            StatusCode::BAD_REQUEST,
-        ))
+        Ok(
+            ErrorResponse::new("User already exists".to_string(), StatusCode::BAD_REQUEST)
+                .format_response(),
+        )
     } else if let Some(crate::Error::MissingUserId) = r.find() {
         event!(Level::ERROR, "Missing User Id");
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "Missing User Id".to_string(),
-                StatusCode::BAD_REQUEST,
-            )),
-            StatusCode::BAD_REQUEST,
-        ))
+        Ok(
+            ErrorResponse::new("Missing User Id".to_string(), StatusCode::BAD_REQUEST)
+                .format_response(),
+        )
     } else if let Some(crate::Error::NotLoggedIn) = r.find() {
         event!(Level::ERROR, "You are not logged in");
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "You are not logged in".to_string(),
-                StatusCode::UNAUTHORIZED,
-            )),
+        Ok(ErrorResponse::new(
+            "You are not logged in".to_string(),
             StatusCode::UNAUTHORIZED,
-        ))
+        )
+        .format_response())
     } else if let Some(crate::Error::CannotBindPort(e)) = r.find() {
         event!(Level::ERROR, "Cannot Bind To Port");
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "Cannot Bind To Port".to_string(),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )),
+        Ok(ErrorResponse::new(
+            "Cannot Bind To Port".to_string(),
             StatusCode::INTERNAL_SERVER_ERROR,
-        ))
+        )
+        .format_response())
     } else if let Some(crate::Error::ObjectIdError(e)) = r.find() {
         match e {
             ObjError::InvalidHexStringCharacter { c, index, hex, .. } => {
@@ -225,20 +240,15 @@ pub async fn return_error(r: Rejection) -> Result<impl Reply, Rejection> {
             _ => event!(Level::ERROR, "Invalid Object ID Error"),
         }
         event!(Level::ERROR, "Cannot Bind To Port");
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "Cannot Bind To Port".to_string(),
-                StatusCode::INTERNAL_SERVER_ERROR,
-            )),
+        Ok(ErrorResponse::new(
+            "Cannot Bind To Port".to_string(),
             StatusCode::INTERNAL_SERVER_ERROR,
-        ))
+        )
+        .format_response())
     } else {
-        Ok(warp::reply::with_status(
-            warp::reply::json(&ErrorResponse::new(
-                "Route not found".to_string(),
-                StatusCode::NOT_FOUND,
-            )),
-            StatusCode::NOT_FOUND,
-        ))
+        Ok(
+            ErrorResponse::new("Route not found".to_string(), StatusCode::NOT_FOUND)
+                .format_response(),
+        )
     }
 }
